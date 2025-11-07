@@ -26,6 +26,7 @@ void Executor::patchShellcodeAddresses(std::vector<uint8_t>& shellcode) {
     }
 
     uint64_t msgBoxAddr = reinterpret_cast<uint64_t>(messageBoxAddr);
+    // 将 MessageBoxA / ExitThread 的真实地址写回 payload，以保证在目标进程内可调用。
     for (int i = 0; i < 8; i++) {
         shellcode[26 + i] = static_cast<uint8_t>((msgBoxAddr >> (i * 8)) & 0xFF);
     }
@@ -45,6 +46,7 @@ bool Executor::executeShellcode(std::vector<uint8_t>& shellcode) {
     patchShellcodeAddresses(shellcode);
 
     allocatedSize = shellcode.size();
+    // 为 shellcode 分配 RWX 内存，PoC 场景保持简单，生产环境应减少 RWX 窗口。
     allocatedMemory = VirtualAlloc(
         nullptr,
         allocatedSize,
@@ -59,6 +61,7 @@ bool Executor::executeShellcode(std::vector<uint8_t>& shellcode) {
 
     memcpy(allocatedMemory, shellcode.data(), allocatedSize);
 
+    // 将解码后的 shellcode 作为线程入口，执行完后由 shellcode 自行调用 ExitThread。
     HANDLE hThread = CreateThread(
         nullptr,
         0,

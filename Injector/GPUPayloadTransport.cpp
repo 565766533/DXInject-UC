@@ -49,12 +49,14 @@ std::vector<uint32_t> GPUPayloadTransport::encodePayload(const uint8_t* payload,
     uint32_t dwordCount = (size + 3) / 4;
     std::vector<uint32_t> encoded(dwordCount, 0);
 
+    // 将任意长度字节流打包成 dword，方便 GPU 端按 uint 读取。
     for (uint32_t i = 0; i < size; i++) {
         uint32_t dwordIndex = i / 4;
         uint32_t byteOffset = i % 4;
         encoded[dwordIndex] |= (static_cast<uint32_t>(payload[i]) << (byteOffset * 8));
     }
 
+    // 位置相关的 XOR + 旋转提供轻量混淆，Target 端用 compute shader 逆运算。
     for (uint32_t i = 0; i < dwordCount; i++) {
         uint32_t value = encoded[i];
 
@@ -96,6 +98,7 @@ bool GPUPayloadTransport::encodeAndUploadPayload(const uint8_t* payload, uint32_
     D3D11_SUBRESOURCE_DATA initData = {};
     initData.pSysMem = encoded.data();
 
+    // 创建可共享的结构化缓冲区，填充编码后的数据。
     HRESULT hr = device->CreateBuffer(&bufferDesc, &initData, &encodedBuffer);
     if (FAILED(hr)) {
         std::cerr << "failed to create gpu buffer\n";
@@ -111,6 +114,7 @@ bool GPUPayloadTransport::encodeAndUploadPayload(const uint8_t* payload, uint32_
         return false;
     }
 
+    // 将资源转换成跨进程可传递的共享句柄，写入共享内存供 Target 打开。
     hr = dxgiResource->GetSharedHandle(&sharedBufferHandle);
     dxgiResource->Release();
 
@@ -119,6 +123,7 @@ bool GPUPayloadTransport::encodeAndUploadPayload(const uint8_t* payload, uint32_
         return false;
     }
 
+    // 提前释放 Keyed Mutex，确保目标进程能够 Acquire。
     IDXGIKeyedMutex* keyedMutex = nullptr;
     hr = encodedBuffer->QueryInterface(__uuidof(IDXGIKeyedMutex), (void**)&keyedMutex);
     if (SUCCEEDED(hr)) {

